@@ -295,6 +295,35 @@ class Database:
             (user_id, tx_type, amount, related_user_id, charge_id, description, balance_after),
         )
 
+    async def debit_balance(self, user_id: int, amount: int, reason: Optional[str] = None) -> int:
+        if amount <= 0:
+            raise ValueError("amount must be positive")
+        conn = await self._connect()
+        try:
+            await conn.execute("BEGIN")
+            await self._ensure_user_tx(conn, user_id, None)
+            current_balance = await self._get_balance_tx(conn, user_id)
+            if current_balance < amount:
+                await conn.rollback()
+                raise ValueError("insufficient_funds")
+            await conn.execute(
+                "UPDATE users SET balance = balance - ?, updated_at=datetime('now') WHERE user_id=?",
+                (amount, user_id),
+            )
+            balance_after = await self._get_balance_tx(conn, user_id)
+            await self._insert_transaction(
+                conn,
+                user_id=user_id,
+                tx_type="gift_out",
+                amount=amount,
+                description=reason or "Списание через API",
+                balance_after=balance_after,
+            )
+            await conn.commit()
+            return balance_after
+        finally:
+            await conn.close()
+
     async def get_transactions(self, user_id: int, limit: int = 20, offset: int = 0) -> List[Dict[str, Any]]:
         conn = await self._connect()
         try:

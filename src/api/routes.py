@@ -2,6 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from aiogram import Bot
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from config.settings import Settings
 from db.database import Database
@@ -46,6 +47,19 @@ def create_api_app(settings: Settings, db: Database, bot: Bot) -> FastAPI:
     ) -> Dict[str, List[Dict[str, Any]]]:
         items = await db.top_balances(limit=limit)
         return {"items": items}
+
+    class DebitRequest(BaseModel):
+        user_id: int = Field(..., ge=1)
+        amount: int = Field(..., ge=1)
+        reason: Optional[str] = Field(None, max_length=200)
+
+    @app.post("/debit")
+    async def debit_balance(payload: DebitRequest, _=Depends(require_token)) -> Dict[str, Any]:
+        try:
+            balance_after = await db.debit_balance(payload.user_id, payload.amount, payload.reason)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {"user_id": payload.user_id, "balance": balance_after}
 
     @app.get("/telegram/stars/bot-balance")
     async def bot_balance(_=Depends(require_token)) -> Dict[str, Any]:
