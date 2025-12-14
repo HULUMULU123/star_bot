@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Optional
 
 from aiogram import Bot, F, Router
@@ -24,14 +25,21 @@ def setup_handlers(router: Router, db: Database, settings: Settings) -> None:
     async def cmd_start(message: Message, state: FSMContext) -> None:
         await state.clear()
         await db.ensure_user(message.from_user.id, message.from_user.username)
-        await message.answer(texts.WELCOME, reply_markup=keyboards.main_menu())
+        await message.answer(
+            texts.WELCOME,
+            reply_markup=keyboards.main_menu(include_test=settings.test_mode),
+        )
 
     @router.callback_query(F.data == "menu:root")
     async def menu_root(callback: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
         await callback.answer()
         if callback.message:
-            await safe_edit(callback.message, texts.WELCOME, keyboards.main_menu())
+            await safe_edit(
+                callback.message,
+                texts.WELCOME,
+                keyboards.main_menu(include_test=settings.test_mode),
+            )
 
     @router.callback_query(F.data == "menu:buy")
     async def menu_buy(callback: CallbackQuery) -> None:
@@ -49,7 +57,11 @@ def setup_handlers(router: Router, db: Database, settings: Settings) -> None:
             "Пример: @username или 123456789. Отправка возможна только внутри бота."
         )
         if callback.message:
-            await safe_edit(callback.message, text, keyboards.main_menu())
+            await safe_edit(
+                callback.message,
+                text,
+                keyboards.main_menu(include_test=settings.test_mode),
+            )
 
     @router.callback_query(F.data.startswith("menu:history:"))
     async def menu_history(callback: CallbackQuery) -> None:
@@ -66,14 +78,22 @@ def setup_handlers(router: Router, db: Database, settings: Settings) -> None:
     async def menu_help(callback: CallbackQuery) -> None:
         await callback.answer()
         if callback.message:
-            await safe_edit(callback.message, texts.HELP, keyboards.main_menu())
+            await safe_edit(
+                callback.message,
+                texts.HELP,
+                keyboards.main_menu(include_test=settings.test_mode),
+            )
 
     @router.callback_query(F.data == "menu:balance")
     async def menu_balance(callback: CallbackQuery) -> None:
         await callback.answer()
         bal = await db.get_balance(callback.from_user.id)
         if callback.message:
-            await safe_edit(callback.message, texts.balance_text(callback.from_user.id, bal), keyboards.main_menu())
+            await safe_edit(
+                callback.message,
+                texts.balance_text(callback.from_user.id, bal),
+                keyboards.main_menu(include_test=settings.test_mode),
+            )
 
     @router.message(GiftStates.waiting_for_recipient)
     async def gift_recipient(message: Message, state: FSMContext) -> None:
@@ -127,7 +147,7 @@ def setup_handlers(router: Router, db: Database, settings: Settings) -> None:
             await callback.message.edit_text(
                 f"Готово! Отправлено {amount}⭐ пользователю <code>{recipient_id}</code>.\n"
                 f"Ваш баланс в боте: {new_balance}⭐",
-                reply_markup=keyboards.main_menu(),
+                reply_markup=keyboards.main_menu(include_test=settings.test_mode),
             )
 
     @router.callback_query(F.data.startswith("refund:"))
@@ -167,7 +187,7 @@ def setup_handlers(router: Router, db: Database, settings: Settings) -> None:
         if callback.message:
             await callback.message.edit_text(
                 f"Возврат {amount}⭐ выполнен.\nТекущий баланс в боте: {balance}⭐",
-                reply_markup=keyboards.main_menu(),
+                reply_markup=keyboards.main_menu(include_test=settings.test_mode),
             )
 
     @router.callback_query(F.data.startswith("buy:"))
@@ -236,7 +256,7 @@ def setup_handlers(router: Router, db: Database, settings: Settings) -> None:
         balance = await db.get_balance(user_id)
         await message.answer(
             f"Покупка успешна! +{amount}⭐ зачислено на баланс.\nВаш баланс в боте: {balance}⭐",
-            reply_markup=keyboards.main_menu(),
+            reply_markup=keyboards.main_menu(include_test=settings.test_mode),
         )
         logger.info(
             "purchase completed",
@@ -246,6 +266,31 @@ def setup_handlers(router: Router, db: Database, settings: Settings) -> None:
     @router.callback_query(F.data == "noop")
     async def noop(callback: CallbackQuery) -> None:
         await callback.answer()
+
+    @router.callback_query(F.data == "test:add50")
+    async def test_add(callback: CallbackQuery) -> None:
+        if not settings.test_mode:
+            await callback.answer("Тестовая кнопка недоступна.", show_alert=True)
+            return
+
+        await callback.answer("Начислено +50⭐ (тест)")
+        await db.ensure_user(callback.from_user.id, callback.from_user.username)
+
+        synthetic_charge = f"test:{callback.from_user.id}:{int(time.time()*1000)}"
+        await db.add_purchase(
+            user_id=callback.from_user.id,
+            username=callback.from_user.username,
+            amount=50,
+            charge_id=synthetic_charge,
+        )
+        balance = await db.get_balance(callback.from_user.id)
+
+        if callback.message:
+            await safe_edit(
+                callback.message,
+                f"🧪 Тестовое начисление: +50⭐\nВаш баланс в боте: {balance}⭐",
+                keyboards.main_menu(include_test=settings.test_mode),
+            )
 
 
 async def send_history(callback: CallbackQuery, db: Database, page: int) -> None:

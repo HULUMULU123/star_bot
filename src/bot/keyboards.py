@@ -4,7 +4,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 BUY_PACKS = [50, 100, 250, 500]
 
 
-def main_menu() -> InlineKeyboardMarkup:
+def main_menu(include_test: bool = False) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text="⭐ Купить Stars", callback_data="menu:buy"),
@@ -21,6 +21,10 @@ def main_menu() -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(text="ℹ️ Помощь", callback_data="menu:help"),
     )
+    if include_test:
+        builder.row(
+            InlineKeyboardButton(text="🧪 Тест: +50⭐", callback_data="test:add50"),
+        )
     return builder.as_markup()
 
 
