@@ -54,6 +54,7 @@ def create_api_app(settings: Settings, db: Database, bot: Bot) -> FastAPI:
         reason: Optional[str] = Field(None, max_length=200)
 
     @app.post("/debit")
+    @app.post("/balance/debit")
     async def debit_balance(payload: DebitRequest, _=Depends(require_token)) -> Dict[str, Any]:
         try:
             balance_after = await db.debit_balance(payload.user_id, payload.amount, payload.reason)
